@@ -1,6 +1,6 @@
 # Tiny Tapeout project information
 project:
-  title:        "8-bit AXI4-Stream FWFT FIFO"      # Project title
+  title:        "IEEE 8-bit AXI4-Stream FWFT FIFO"      # Project title
   author:       "Benedictus Kenneth Setiadi"      # Your name
   discord:      "bkentganteng"      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
   description:  "An 8-bit depth-16 AXI4-Stream FIFO with First-Word Fall-Through (FWFT) using register file."      # One line description of what your project does
