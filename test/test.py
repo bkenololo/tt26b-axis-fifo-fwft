@@ -1,17 +1,17 @@
-# SPDX-FileCopyrightText: © 2024 Tiny Tapeout
+# SPDX-FileCopyrightText: © 2026 Tiny Tapeout
 # SPDX-License-Identifier: Apache-2.0
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import ClockCycles
+from cocotb.triggers import ClockCycles, FallingEdge
 
 @cocotb.test()
 async def test_axis_fifo(dut):
     dut._log.info("Start AXI4-Stream FWFT FIFO Test")
 
     # 1. SETUP CLOCK & INITIAL STATE
-    # Clock 50 MHz (20 ns period)
-    clock = Clock(dut.clk, 20, units="ns")
+    # Clock 50 MHz (20 ns period) - Diperbaiki: 'units' jadi 'unit' untuk menghilangkan warning
+    clock = Clock(dut.clk, 20, unit="ns")
     cocotb.start_soon(clock.start())
 
     # Enable pin always high for Tiny Tapeout
@@ -26,9 +26,9 @@ async def test_axis_fifo(dut):
     dut.rst_n.value = 1
     await ClockCycles(dut.clk, 2)
 
-    # Helper function untuk baca pin uio_out
+    # Helper function untuk baca pin uio_out (Diperbaiki: menggunakan int() untuk menghilangkan warning)
     def get_uio_out_bit(bit_index):
-        val = dut.uio_out.value.integer
+        val = int(dut.uio_out.value)
         return (val >> bit_index) & 1
 
     # 3. TEST 1: FWFT BEHAVIOR (First-Word Fall-Through)
@@ -40,6 +40,9 @@ async def test_axis_fifo(dut):
     await ClockCycles(dut.clk, 1)    # Tunggu 1 clock supaya data masuk
     dut.uio_in.value = 0             # s_axis_tvalid = 0 (berhenti nulis)
     await ClockCycles(dut.clk, 1)
+
+    # --- TUNGGU GATE DELAY STABIL (PENTING UNTUK GL_TEST) ---
+    await FallingEdge(dut.clk)
 
     # Karena ini FWFT, data 0xAA harusnya LANGSUNG ada di output (uo_out) 
     # dan m_axis_tvalid (uio_out bit 3) harusnya HIGH.
@@ -59,6 +62,9 @@ async def test_axis_fifo(dut):
     dut.uio_in.value = 0             # Stop nulis
     await ClockCycles(dut.clk, 1)
 
+    # --- TUNGGU GATE DELAY STABIL ---
+    await FallingEdge(dut.clk)
+
     # Cek apakah flag FULL nyala (uio_out bit 4) dan s_tready mati (uio_out bit 1)
     assert get_uio_out_bit(4) == 1, "fifo_full flag should be HIGH!"
     assert get_uio_out_bit(1) == 0, "s_axis_tready should be LOW when full!"
@@ -75,6 +81,9 @@ async def test_axis_fifo(dut):
     
     dut.uio_in.value = 0             # Stop baca
     await ClockCycles(dut.clk, 1)
+
+    # --- TUNGGU GATE DELAY STABIL ---
+    await FallingEdge(dut.clk)
 
     # Cek apakah flag EMPTY nyala (uio_out bit 5)
     assert get_uio_out_bit(5) == 1, "fifo_empty flag should be HIGH!"

@@ -73,10 +73,16 @@ module axis_fifo_fwft_bkenololo #(
     // ==========================================
     // Sequential Logic: Memory Write and Pointer Updates
     // ==========================================
+    integer i; // Deklarasikan index untuk loop reset
+
     always @(posedge clk) begin
         if (!rst_n) begin
             wr_ptr <= 5'b0;
             rd_ptr <= 5'b0;
+            // FORCED RESET: Sapu bersih semua Flip-Flop memori ke angka 0
+            for (i = 0; i < DEPTH; i = i + 1) begin
+                mem[i] <= {DATA_WIDTH{1'b0}};
+            end
         end else begin
             // Execute write operation
             if (write_en) begin
