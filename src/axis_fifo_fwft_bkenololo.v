@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2026 Benedictus Kenneth Setiadi
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 `default_nettype none
 
 module axis_fifo_fwft_bkenololo #(
