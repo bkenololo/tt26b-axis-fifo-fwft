@@ -5,36 +5,80 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles
 
-
 @cocotb.test()
-async def test_project(dut):
-    dut._log.info("Start")
+async def test_axis_fifo(dut):
+    dut._log.info("Start AXI4-Stream FWFT FIFO Test")
 
-    # Set the clock period to 10 us (100 KHz)
-    clock = Clock(dut.clk, 10, unit="us")
+    # 1. SETUP CLOCK & INITIAL STATE
+    # Clock 50 MHz (20 ns period)
+    clock = Clock(dut.clk, 20, units="ns")
     cocotb.start_soon(clock.start())
 
-    # Reset
-    dut._log.info("Reset")
+    # Enable pin always high for Tiny Tapeout
     dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
+    dut.ui_in.value = 0      # s_axis_tdata = 0
+    dut.uio_in.value = 0     # all input control signals = 0
+
+    # 2. RESET SEQUENCE
+    dut._log.info("Resetting DUT...")
     dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
+    await ClockCycles(dut.clk, 5)
     dut.rst_n.value = 1
+    await ClockCycles(dut.clk, 2)
 
-    dut._log.info("Test project behavior")
+    # Helper function untuk baca pin uio_out
+    def get_uio_out_bit(bit_index):
+        val = dut.uio_out.value.integer
+        return (val >> bit_index) & 1
 
-    # Set the input values you want to test
-    dut.ui_in.value = 20
-    dut.uio_in.value = 30
-
-    # Wait for one clock cycle to see the output values
+    # 3. TEST 1: FWFT BEHAVIOR (First-Word Fall-Through)
+    dut._log.info("TEST 1: FWFT Behavior")
+    # Tulis 1 data (misal: 0xAA)
+    dut.ui_in.value = 0xAA           # s_axis_tdata
+    dut.uio_in.value = 1             # s_axis_tvalid = 1 (bit 0)
+    
+    await ClockCycles(dut.clk, 1)    # Tunggu 1 clock supaya data masuk
+    dut.uio_in.value = 0             # s_axis_tvalid = 0 (berhenti nulis)
     await ClockCycles(dut.clk, 1)
 
-    # The following assersion is just an example of how to check the output values.
-    # Change it to match the actual expected output of your module:
-    assert dut.uo_out.value == 50
+    # Karena ini FWFT, data 0xAA harusnya LANGSUNG ada di output (uo_out) 
+    # dan m_axis_tvalid (uio_out bit 3) harusnya HIGH.
+    assert dut.uo_out.value == 0xAA, f"FWFT Failed! Expected 0xAA, got {dut.uo_out.value}"
+    assert get_uio_out_bit(3) == 1, "m_axis_tvalid should be HIGH!"
+    assert get_uio_out_bit(5) == 0, "fifo_empty should be LOW!"
+    dut._log.info("FWFT Behavior Verified! Data passed through immediately.")
 
-    # Keep testing the module by changing the input values, waiting for
-    # one or more clock cycles, and asserting the expected output values.
+    # 4. TEST 2: FILL FIFO TO FULL
+    dut._log.info("TEST 2: Fill FIFO to FULL")
+    # Kita udah isi 1, berarti sisa 15 slot lagi (karena depth = 16)
+    dut.uio_in.value = 1             # s_axis_tvalid = 1
+    for i in range(1, 16):
+        dut.ui_in.value = i          # Masukin data 1, 2, 3, ... 15
+        await ClockCycles(dut.clk, 1)
+    
+    dut.uio_in.value = 0             # Stop nulis
+    await ClockCycles(dut.clk, 1)
+
+    # Cek apakah flag FULL nyala (uio_out bit 4) dan s_tready mati (uio_out bit 1)
+    assert get_uio_out_bit(4) == 1, "fifo_full flag should be HIGH!"
+    assert get_uio_out_bit(1) == 0, "s_axis_tready should be LOW when full!"
+    dut._log.info("FIFO successfully filled and FULL flag asserted.")
+
+    # 5. TEST 3: READ ALL DATA UNTIL EMPTY
+    dut._log.info("TEST 3: Read all data until EMPTY")
+    # Set m_axis_tready = 1 (bit 2 di uio_in)
+    dut.uio_in.value = 4             # Binary: 0000_0100 -> bit 2 HIGH
+    
+    # Baca 16 data
+    for i in range(16):
+        await ClockCycles(dut.clk, 1)
+    
+    dut.uio_in.value = 0             # Stop baca
+    await ClockCycles(dut.clk, 1)
+
+    # Cek apakah flag EMPTY nyala (uio_out bit 5)
+    assert get_uio_out_bit(5) == 1, "fifo_empty flag should be HIGH!"
+    assert get_uio_out_bit(3) == 0, "m_axis_tvalid should be LOW when empty!"
+    dut._log.info("FIFO successfully emptied and EMPTY flag asserted.")
+    
+    dut._log.info("ALL TESTS PASSED! YOU ARE READY TO TAPE OUT!")
